@@ -1,2 +1,5 @@
+# Environment variables
 .env
-research
+
+# Research directory
+research/
