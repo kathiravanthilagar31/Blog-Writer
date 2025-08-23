@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: multi_agent_blog_writer
+Version: 0.1.0
+Summary: A multi-agent system for automated blog content creation using AutoGen.
+Author: Your Name
+Author-email: your.email@example.com
+Dynamic: author
+Dynamic: author-email
+Dynamic: summary
