@@ -1,127 +1,110 @@
-import autogen
+import google.generativeai as genai
 
-# --- MONKEY PATCH TO FIX INCOMPATIBILITY (Keep this at the top) ---
-import openai
-from openai._base_client import SyncHttpxClientWrapper
+def get_gemini_response(prompt: str, model: genai.GenerativeModel) -> str:
+    """Calls the Gemini API with a pre-configured model and returns the text response."""
+    response = model.generate_content(prompt)
+    return response.text
 
-class CustomHttpxClientWrapper(SyncHttpxClientWrapper):
-    def __init__(self, *args, **kwargs):
-        kwargs.pop("proxies", None)
-        super().__init__(*args, **kwargs)
-
-openai._base_client.SyncHttpxClientWrapper = CustomHttpxClientWrapper
-# --- END OF PATCH ---
-
-
-def run_autogen_workflow(task: str, config_list: list):
+def run_gemini_workflow(task: str, word_limit: int, api_key: str):
     """
-    Orchestrates a precise, multi-step agent workflow and logs the conversation.
+    Orchestrates a precise, multi-step agent workflow using Google's Gemini model
+    and your custom prompt formats.
     """
-    llm_config = {"config_list": config_list, "temperature": 0.7}
+    # Configure the API and model only ONCE.
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
     conversation_log = []
 
-    # --- Define All Agents ---
-    user_proxy = autogen.UserProxyAgent(name="User_Proxy", code_execution_config=False, human_input_mode="NEVER")
-    writer = autogen.AssistantAgent(name="Draft_Writer", llm_config=llm_config, 
-                                    system_message="""You are a professional blog post writer.
-                                    Your only job is to write a first draft based on the provided topic.
-                                    Make a note for Final Editor about {Word_limit} 
-                                    Do not add any other commentary.""")
+    # --- Define Agent Prompts using your format ---
+    writer_prompt = f"""You are a professional blog post writer.
+    Your only job is to write a first draft based on the provided topic.
+    Make a note for the Final Editor that the post should be around {word_limit} words.
+    Do not add any other commentary.
+    Here is the topic:
+    {task}"""
+
+    seo_reviewer_prompt_template = """You are a professional SEO specialist. 
+    Review the original draft below and provide your feedback 
+    in three separate, ordered bullet lines that start with ➡️.
+    Do not use numbered points.
+    Start your feedback with the bolded header '**SEO Reviewer:**'.
+
+    --- ORIGINAL DRAFT ---
+    {draft}"""
     
-    seo_reviewer = autogen.AssistantAgent(name="SEO_Reviewer", llm_config=llm_config, 
-                                          system_message="""You are a professional SEO specialist. 
-                                          Review the original draft and you should provide your feedback 
-                                          starts with ordered,seperated bullet lines start with ➡️ not more than 3 points. 
-                                          (e.g:)
-                                          ➡️ point 1 content`\n`
-                                          ➡️ point 2 content`\n`
-                                          and so on.(But do not explicitly say like point 1, point 2)
-                                          Start your feedback with the bolded header 'SEO Reviewer:'.""")
-    
-    legal_reviewer = autogen.AssistantAgent(name="Legal_Reviewer", llm_config=llm_config, 
-                                            system_message="""You are a professional legal expert. 
-                                            Review the original draft for legal issues and you should your provide feedback
-                                            starts with ordered,seperated bullet lines start with ➡️ not more than 3 points.
-                                            (e.g:)
-                                            ➡️ point 1 content`\n`
-                                            ➡️ point 2 content`\n`
-                                            and so on.(But do not explicitly say like point 1, point 2)
-                                            Start your feedback with the bolded header 'Legal Reviwer:'.""")
-    
-    ethics_reviewer = autogen.AssistantAgent(name="Ethics_Reviewer", llm_config=llm_config, 
-                                             system_message="""You are a professional ethics expert. 
-                                             Review the original draft for ethical concerns and you should your provide feedback 
-                                             starts with ordered,seperated bullet lines start with ➡️ not more than 3 points 
-                                             (e.g:)
-                                             ➡️ point 1 content`\n`
-                                             ➡️ point 2 content`\n`
-                                             and so on.(But do not explicitly say like point 1, point 2)
-                                             Start your feedback with the bolded header 'Ethical Reviewer:'.""")
-    
-    plagiarism_checker = autogen.AssistantAgent(name="Plagiarism_Checker", llm_config=llm_config, 
-                                                system_message="""You are a professional plagiarism checker. 
-                                                Check the original draft for plagiarism, originality and you should provide your findings 
-                                                starts with ordered,seperated bullet lines start with ➡️ not more than 3 points 
-                                                (e.g:)
-                                                ➡️ point 1 content`\n`
-                                                ➡️ point 2 content`\n`
-                                                and so on.(But do not explicitly say like point 1, point 2)                                             
-                                                Start your feedback with the bolded header 'Plagiarism Checker:'.""")
-    
-    final_editor = autogen.AssistantAgent(name="Final_Editor", llm_config=llm_config, 
-                                          system_message=f"""You are the professional final editor. 
-                                          Rewrite the original draft solely based on the consolidated feedback provided without any additional comments and 
-                                          your rewritten '--- FINAL DRAFT ---' should and strictly match the count of number of words in '--- ORIGINAL DRAFT ---'.
-                                          You should not mention note on word count in your draft. 
-                                          Output two things, each clearly labeled: '--- ORIGINAL DRAFT ---' and '--- FINAL REWRITTEN DRAFT ---'.""")
-    
+    legal_reviewer_prompt_template = """You are a professional legal expert. 
+    Review the original draft below for legal issues and provide your feedback
+    in up to three separate, ordered bullet lines that start with ➡️.
+    Do not use numbered points.
+    Start your feedback with the bolded header '**Legal Reviewer:**'.
+
+    --- ORIGINAL DRAFT ---
+    {draft}"""
+
+    ethics_reviewer_prompt_template = """You are a professional ethics expert. 
+    Review the original draft below for ethical concerns and provide your feedback 
+    in up to three separate, ordered bullet lines that start with ➡️.
+    Do not use numbered points.
+    Start your feedback with the bolded header '**Ethical Reviewer:**'.
+
+    --- ORIGINAL DRAFT ---
+    {draft}"""
+
+    plagiarism_checker_prompt_template = """You are a professional plagiarism checker. 
+    Check the original draft below for originality and provide your findings 
+    in up to three separate, ordered bullet lines that start with ➡️.
+    Do not use numbered points.
+    Start your feedback with the bolded header '**Plagiarism Checker:**'.
+
+    --- ORIGINAL DRAFT ---
+    {draft}"""
+
+    final_editor_prompt_template = """You are the professional final editor. 
+    Rewrite the original draft solely based on the consolidated feedback provided.
+    The final rewritten draft should strictly match the word count of the original draft.
+    Do not mention the word count in your draft. 
+    Output two things, each clearly labeled: '--- ORIGINAL DRAFT ---' and '--- FINAL REWRITTEN DRAFT ---'.
+
+    {consolidated_feedback}"""
 
     # --- Execute the Workflow Step-by-Step ---
 
     # Step 1: Writer creates the first draft
-    chat_result_writer = user_proxy.initiate_chat(recipient=writer, message=task, max_turns=1, silent=False)
-    original_draft = chat_result_writer.chat_history[-1]["content"]
-    conversation_log.append(f"--------------- FIRST DRAFT ----------------\n\n{original_draft}")
+    original_draft = get_gemini_response(writer_prompt, model)
+    conversation_log.append(f"\n{original_draft}")
 
     # Step 2: Get feedback from all reviewers
-    review_task = f"Here is the draft to review:\n\n{original_draft}"
-    
-    chat_result_seo = user_proxy.initiate_chat(recipient=seo_reviewer, message=review_task, max_turns=1, silent=False)
-    seo_feedback = chat_result_seo.chat_history[-1]["content"]
-    conversation_log.append(f"{seo_feedback}")
+    seo_feedback = get_gemini_response(seo_reviewer_prompt_template.format(draft=original_draft), model)
+    conversation_log.append(f"\n{seo_feedback}")
 
-    chat_result_legal = user_proxy.initiate_chat(recipient=legal_reviewer, message=review_task, max_turns=1, silent=False)
-    legal_feedback = chat_result_legal.chat_history[-1]["content"]
-    conversation_log.append(f"{legal_feedback}")
+    legal_feedback = get_gemini_response(legal_reviewer_prompt_template.format(draft=original_draft), model)
+    conversation_log.append(f"\n{legal_feedback}")
 
-    chat_result_ethics = user_proxy.initiate_chat(recipient=ethics_reviewer, message=review_task, max_turns=1, silent=False)
-    ethics_feedback = chat_result_ethics.chat_history[-1]["content"]
-    conversation_log.append(f"{ethics_feedback}")
+    ethics_feedback = get_gemini_response(ethics_reviewer_prompt_template.format(draft=original_draft), model)
+    conversation_log.append(f"\n{ethics_feedback}")
 
-    chat_result_plagiarism = user_proxy.initiate_chat(recipient=plagiarism_checker, message=review_task, max_turns=1, silent=False)
-    plagiarism_feedback = chat_result_plagiarism.chat_history[-1]["content"]
-    conversation_log.append(f"{plagiarism_feedback}")
+    plagiarism_feedback = get_gemini_response(plagiarism_checker_prompt_template.format(draft=original_draft), model)
+    conversation_log.append(f"\n{plagiarism_feedback}")
 
     # Step 3: Consolidate feedback and send to Final Editor
-    consolidated_feedback =f"""
-    
-    \n\nPlease rewrite the following original draft based on the feedback provided.\n\n
+    consolidated_feedback = f"""
+    \n--- ORIGINAL DRAFT ---\n
+    \n{original_draft}\n
 
-    \n--- ORIGINAL DRAFT ---\n\n
-    \n{original_draft}\n\n
-
-    \n--- CONSOLIDATED FEEDBACK ---\n\n
+    \n--- CONSOLIDATED FEEDBACK ---\n
     \n{seo_feedback}\n
+
     \n{legal_feedback}\n
+
     \n{ethics_feedback}\n
+
     \n{plagiarism_feedback}\n
     """
-    
-    conversation_log.append(f"\n---------- Consolidated Feedback for Editor ----------\n{consolidated_feedback}\n")
+    conversation_log.append(f"\n\n----------Consolidated Feedback for Editor----------\n\n{consolidated_feedback}")
 
-    chat_result_final = user_proxy.initiate_chat(recipient=final_editor, message=consolidated_feedback, max_turns=1, silent=False)
-    final_post_with_original = chat_result_final.chat_history[-1]["content"]
-    conversation_log.append(f"\n---------- Final Editor's Output ----------\n\n{final_post_with_original}\n")
+    final_post_with_original = get_gemini_response(final_editor_prompt_template.format(consolidated_feedback=consolidated_feedback), model)
+    conversation_log.append(f"\n\n----------Final Editor's Output----------\n\n{final_post_with_original}")
 
     # Extract only the final rewritten draft to display as the main result
     final_post = final_post_with_original.split("--- FINAL REWRITTEN DRAFT ---")[-1].strip()

@@ -1,6 +1,6 @@
 import streamlit as st
 import os
-from src.helper import run_autogen_workflow
+from src.helper import run_gemini_workflow
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -10,19 +10,11 @@ st.set_page_config(page_title="Multi-Agent Blog Writer", layout="wide")
 st.title("Multi-Agent Blog Content Writer")
 st.markdown("This application uses a team of AI agents to write and review a blog post.")
 
-api_key = os.getenv("OPENAI_API_KEY")
+api_key = os.getenv("GOOGLE_API_KEY")
 
 if not api_key:
     st.error("OPENAI_API_KEY not found in .env file. Please add it.")
     st.stop()
-
-# Create the configuration list in the format required by openai v0.28
-config_list = [
-    {
-        'model': 'gpt-4',
-        'api_key': api_key,
-    }
-]
 
 with st.form("blog_topic_form"):
     topic = st.text_input("Enter the blog topic:", placeholder="e.g., The Future of Space Exploration")
@@ -42,7 +34,7 @@ if submitted:
         with st.spinner("Agents are collaborating... Please wait."):
             try:
                 # The workflow now returns the final post and the conversation log
-                final_post, conversation_log = run_autogen_workflow(task, config_list)
+                final_post, conversation_log = run_gemini_workflow(task, word_limit, api_key)
                 
                 st.subheader("Final Blog Post:")
                 st.markdown(final_post)
