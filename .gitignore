@@ -3,3 +3,5 @@
 
 # Research directory
 research/
+src/__pycache__/
+*.pyc
